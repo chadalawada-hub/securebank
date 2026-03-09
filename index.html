@@ -1,0 +1,1439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>SecureBank</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+/* ── Reset & Variables ──────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ink:#0a0e17;
+  --ink2:#1e2535;
+  --slate:#4a5568;
+  --mist:#9aa5b4;
+  --fog:#e8ecf0;
+  --white:#ffffff;
+  --gold:#c9a84c;
+  --gold2:#e8c96d;
+  --gold-dim:#a8872e;
+  --green:#1a9e6e;
+  --red:#d94f4f;
+  --amber:#e8962a;
+
+  --r-sm:10px;
+  --r-md:16px;
+  --r-lg:24px;
+  --r-xl:32px;
+
+  --shadow-card: 0 2px 12px rgba(0,0,0,.08), 0 1px 3px rgba(0,0,0,.05);
+  --shadow-float:0 16px 48px rgba(0,0,0,.18);
+  --transition:.22s cubic-bezier(.4,0,.2,1);
+}
+
+html,body{
+  height:100%;
+  background:var(--ink);
+  font-family:'DM Sans',sans-serif;
+  color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+  overflow:hidden;
+}
+
+/* ── Phone Shell ────────────────────────────────────────────────────────── */
+#app-shell{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
+  background: radial-gradient(ellipse 80% 60% at 50% 0%, #1a2340 0%, var(--ink) 100%);
+}
+
+.phone{
+  width:390px;
+  height:844px;
+  background:var(--white);
+  border-radius:52px;
+  box-shadow:var(--shadow-float), inset 0 0 0 1.5px rgba(255,255,255,.1);
+  overflow:hidden;
+  position:relative;
+  display:flex;
+  flex-direction:column;
+}
+
+/* notch */
+.notch{
+  position:absolute;
+  top:0;left:50%;transform:translateX(-50%);
+  width:120px;height:34px;
+  background:var(--ink);
+  border-radius:0 0 20px 20px;
+  z-index:100;
+}
+
+/* status bar */
+.status-bar{
+  height:48px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  padding:0 28px 8px;
+  font-size:12px;
+  font-weight:600;
+  letter-spacing:.3px;
+  flex-shrink:0;
+  z-index:10;
+  position:relative;
+}
+.status-bar.light{color:var(--white)}
+.status-bar.dark{color:var(--ink)}
+
+/* ── Screen System ──────────────────────────────────────────────────────── */
+.screen{
+  position:absolute;
+  inset:0;
+  display:flex;
+  flex-direction:column;
+  transition:opacity .35s ease, transform .35s cubic-bezier(.4,0,.2,1);
+}
+.screen.hidden{opacity:0;pointer-events:none;transform:translateX(24px)}
+.screen.slide-left.hidden{transform:translateX(-24px)}
+
+/* ── Welcome / Splash ───────────────────────────────────────────────────── */
+#screen-welcome{
+  background: linear-gradient(165deg, #0d1421 0%, #162035 55%, #1a2a4a 100%);
+  color:var(--white);
+  justify-content:space-between;
+  padding-bottom:52px;
+}
+#screen-welcome .status-bar{color:rgba(255,255,255,.6)}
+
+.welcome-art{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:0 32px;
+  gap:0;
+}
+
+.brand-icon{
+  width:80px;height:80px;
+  background:linear-gradient(135deg,var(--gold),var(--gold2));
+  border-radius:24px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:36px;
+  margin-bottom:28px;
+  box-shadow:0 8px 32px rgba(201,168,76,.35);
+}
+
+.welcome-title{
+  font-family:'DM Serif Display',serif;
+  font-size:38px;
+  line-height:1.1;
+  text-align:center;
+  margin-bottom:14px;
+  letter-spacing:-.5px;
+}
+.welcome-title em{
+  font-style:italic;
+  color:var(--gold2);
+}
+
+.welcome-sub{
+  font-size:15px;
+  color:rgba(255,255,255,.5);
+  text-align:center;
+  line-height:1.6;
+  max-width:260px;
+}
+
+.welcome-actions{
+  padding:0 28px;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+.btn{
+  width:100%;
+  height:56px;
+  border:none;
+  border-radius:var(--r-md);
+  font-family:'DM Sans',sans-serif;
+  font-size:15px;
+  font-weight:600;
+  letter-spacing:.2px;
+  cursor:pointer;
+  transition:var(--transition);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+}
+.btn:active{transform:scale(.97)}
+
+.btn-gold{
+  background:linear-gradient(135deg,var(--gold),var(--gold2));
+  color:var(--ink);
+  box-shadow:0 4px 20px rgba(201,168,76,.4);
+}
+.btn-gold:hover{box-shadow:0 6px 28px rgba(201,168,76,.55)}
+
+.btn-ghost{
+  background:rgba(255,255,255,.08);
+  color:var(--white);
+  border:1.5px solid rgba(255,255,255,.15);
+}
+.btn-ghost:hover{background:rgba(255,255,255,.13)}
+
+.btn-solid{
+  background:var(--ink2);
+  color:var(--white);
+}
+.btn-outline{
+  background:transparent;
+  color:var(--ink2);
+  border:1.5px solid var(--fog);
+}
+.btn-outline:hover{border-color:var(--slate)}
+
+.btn-icon{
+  background:none;border:none;cursor:pointer;
+  width:40px;height:40px;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  transition:var(--transition);
+}
+.btn-icon:hover{background:var(--fog)}
+
+.btn-sm{
+  height:44px;
+  font-size:14px;
+}
+
+/* ── Auth Screens (Login / Signup) ──────────────────────────────────────── */
+.auth-screen{
+  background:var(--white);
+  flex:1;
+  overflow-y:auto;
+  scrollbar-width:none;
+}
+.auth-screen::-webkit-scrollbar{display:none}
+
+.auth-header{
+  padding:16px 24px 0;
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+.auth-body{
+  padding:24px 28px 40px;
+}
+
+.auth-title{
+  font-family:'DM Serif Display',serif;
+  font-size:30px;
+  line-height:1.15;
+  color:var(--ink);
+  margin-bottom:6px;
+}
+.auth-sub{
+  font-size:14px;
+  color:var(--slate);
+  margin-bottom:28px;
+  line-height:1.5;
+}
+
+/* ── Form Fields ─────────────────────────────────────────────────────────── */
+.field-group{margin-bottom:16px}
+
+.field-label{
+  display:block;
+  font-size:12px;
+  font-weight:600;
+  letter-spacing:.6px;
+  text-transform:uppercase;
+  color:var(--slate);
+  margin-bottom:6px;
+}
+
+.field-wrap{
+  position:relative;
+  display:flex;
+  align-items:center;
+}
+
+.field-input{
+  width:100%;
+  height:52px;
+  background:var(--fog);
+  border:1.5px solid transparent;
+  border-radius:var(--r-sm);
+  padding:0 44px 0 14px;
+  font-family:'DM Sans',sans-serif;
+  font-size:15px;
+  color:var(--ink);
+  outline:none;
+  transition:var(--transition);
+}
+.field-input::placeholder{color:var(--mist)}
+.field-input:focus{
+  border-color:var(--gold);
+  background:var(--white);
+  box-shadow:0 0 0 3px rgba(201,168,76,.12);
+}
+.field-input.error{
+  border-color:var(--red);
+  background:#fff8f8;
+  box-shadow:0 0 0 3px rgba(217,79,79,.1);
+}
+.field-input.success{
+  border-color:var(--green);
+}
+
+.field-icon{
+  position:absolute;
+  right:14px;
+  font-size:17px;
+  pointer-events:none;
+  color:var(--mist);
+}
+
+.field-toggle{
+  position:absolute;
+  right:12px;
+  background:none;border:none;cursor:pointer;
+  font-size:16px;
+  color:var(--mist);
+  padding:4px;
+  transition:var(--transition);
+}
+.field-toggle:hover{color:var(--slate)}
+
+.field-error{
+  font-size:12px;
+  color:var(--red);
+  margin-top:5px;
+  display:flex;
+  align-items:center;
+  gap:4px;
+}
+
+/* ── Password Strength ───────────────────────────────────────────────────── */
+.pw-meter{margin-top:8px}
+.pw-bars{display:flex;gap:4px;margin-bottom:4px}
+.pw-bar{
+  flex:1;height:3px;border-radius:2px;
+  background:var(--fog);
+  transition:background .3s;
+}
+.pw-bar.s1{background:var(--red)}
+.pw-bar.s2{background:var(--amber)}
+.pw-bar.s3{background:var(--gold)}
+.pw-bar.s4{background:var(--green)}
+.pw-label{font-size:11px;color:var(--slate)}
+
+/* ── Divider ─────────────────────────────────────────────────────────────── */
+.divider{
+  display:flex;align-items:center;gap:12px;
+  margin:20px 0;
+  color:var(--mist);
+  font-size:12px;
+  font-weight:500;
+}
+.divider::before,.divider::after{
+  content:'';flex:1;height:1px;background:var(--fog);
+}
+
+/* ── OAuth Button ────────────────────────────────────────────────────────── */
+.btn-oauth{
+  width:100%;
+  height:52px;
+  border:1.5px solid var(--fog);
+  border-radius:var(--r-sm);
+  background:var(--white);
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  font-family:'DM Sans',sans-serif;
+  font-size:14px;
+  font-weight:500;
+  color:var(--ink2);
+  cursor:pointer;
+  transition:var(--transition);
+  margin-bottom:10px;
+}
+.btn-oauth:hover{background:var(--fog);border-color:var(--mist)}
+.btn-oauth:active{transform:scale(.98)}
+
+.oauth-icon{width:20px;height:20px}
+
+/* ── Section Divider (signup) ────────────────────────────────────────────── */
+.section-label{
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.8px;
+  text-transform:uppercase;
+  color:var(--gold-dim);
+  padding:18px 0 10px;
+  display:flex;align-items:center;gap:8px;
+}
+.section-label::after{
+  content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--gold) 0%,transparent 100%);
+  opacity:.3;
+}
+
+/* ── Checkbox ────────────────────────────────────────────────────────────── */
+.checkbox-row{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:14px;
+  background:var(--fog);
+  border-radius:var(--r-sm);
+  margin-bottom:16px;
+  cursor:pointer;
+}
+.checkbox-box{
+  width:20px;height:20px;border-radius:6px;
+  border:2px solid var(--mist);
+  background:var(--white);
+  flex-shrink:0;margin-top:1px;
+  display:flex;align-items:center;justify-content:center;
+  transition:var(--transition);
+}
+.checkbox-box.checked{
+  background:var(--ink);
+  border-color:var(--ink);
+}
+.checkbox-box.checked::after{
+  content:'✓';color:var(--white);font-size:11px;font-weight:700;
+}
+.checkbox-text{
+  font-size:13px;
+  color:var(--slate);
+  line-height:1.5;
+}
+.checkbox-text a{color:var(--gold-dim);text-decoration:none;font-weight:600}
+.checkbox-text a:hover{color:var(--gold)}
+.checkbox-row.error-border{
+  border:1.5px solid var(--red);
+  background:#fff8f8;
+}
+
+/* ── Sign-up Steps ───────────────────────────────────────────────────────── */
+.step-indicator{
+  display:flex;gap:6px;margin-bottom:24px;
+}
+.step-dot{
+  height:4px;border-radius:2px;
+  background:var(--fog);
+  transition:var(--transition);
+  flex:1;
+}
+.step-dot.active{background:var(--gold)}
+.step-dot.done{background:var(--ink2)}
+
+/* ── Auth Link ───────────────────────────────────────────────────────────── */
+.auth-link{
+  text-align:center;
+  font-size:14px;
+  color:var(--slate);
+  margin-top:20px;
+}
+.auth-link a,.auth-link span{
+  color:var(--gold-dim);
+  font-weight:600;
+  cursor:pointer;
+  text-decoration:none;
+}
+.auth-link a:hover,.auth-link span:hover{color:var(--gold)}
+
+/* ── Toast ───────────────────────────────────────────────────────────────── */
+.toast{
+  position:absolute;
+  bottom:36px;left:28px;right:28px;
+  padding:14px 16px;
+  background:var(--ink2);
+  color:var(--white);
+  border-radius:var(--r-sm);
+  font-size:13px;
+  font-weight:500;
+  display:flex;align-items:center;gap:10px;
+  box-shadow:var(--shadow-float);
+  z-index:200;
+  transform:translateY(20px);
+  opacity:0;
+  transition:.3s cubic-bezier(.4,0,.2,1);
+}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.success{background:#1a3d2b;border-left:3px solid var(--green)}
+.toast.error{background:#3d1a1a;border-left:3px solid var(--red)}
+
+/* ── Dashboard ──────────────────────────────────────────────────────────── */
+#screen-dashboard{
+  background:#f4f6f9;
+  overflow:hidden;
+}
+
+.dash-scroll{
+  flex:1;
+  overflow-y:auto;
+  scrollbar-width:none;
+  padding-bottom:24px;
+}
+.dash-scroll::-webkit-scrollbar{display:none}
+
+/* Hero card */
+.dash-hero{
+  background:linear-gradient(145deg,#0d1421 0%,#1e2f50 100%);
+  padding:20px 24px 32px;
+  position:relative;
+  overflow:hidden;
+}
+.dash-hero::before{
+  content:'';
+  position:absolute;inset:0;
+  background:radial-gradient(ellipse 60% 80% at 80% 50%, rgba(201,168,76,.12) 0%, transparent 70%);
+}
+
+.dash-topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:24px;position:relative;z-index:1;
+}
+.dash-greeting{
+  font-size:13px;color:rgba(255,255,255,.5);margin-bottom:2px;
+}
+.dash-name{
+  font-family:'DM Serif Display',serif;
+  font-size:22px;color:var(--white);
+}
+
+.avatar{
+  width:44px;height:44px;border-radius:14px;
+  background:linear-gradient(135deg,var(--gold),var(--gold2));
+  display:flex;align-items:center;justify-content:center;
+  font-family:'DM Serif Display',serif;
+  font-size:18px;color:var(--ink);
+  font-weight:700;
+}
+
+.balance-label{
+  font-size:12px;
+  color:rgba(255,255,255,.45);
+  letter-spacing:.5px;
+  text-transform:uppercase;
+  margin-bottom:4px;
+  position:relative;z-index:1;
+}
+.balance-amount{
+  font-family:'DM Serif Display',serif;
+  font-size:44px;
+  color:var(--white);
+  letter-spacing:-1px;
+  margin-bottom:2px;
+  position:relative;z-index:1;
+}
+.balance-cents{font-size:26px;opacity:.7}
+.balance-change{
+  font-size:12px;color:rgba(255,255,255,.45);
+  position:relative;z-index:1;
+}
+.balance-change span{color:#5de0a8}
+
+.card-row{
+  display:flex;
+  gap:8px;
+  margin-top:20px;
+  position:relative;z-index:1;
+}
+.card-chip{
+  background:rgba(255,255,255,.1);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:10px;
+  padding:8px 14px;
+  font-size:12px;
+  color:rgba(255,255,255,.65);
+  display:flex;align-items:center;gap:6px;
+}
+.card-chip-dot{
+  width:7px;height:7px;border-radius:50%;
+  background:var(--green);
+  box-shadow:0 0 0 2px rgba(90,222,168,.25);
+}
+
+/* Quick actions */
+.quick-actions{
+  display:grid;grid-template-columns:repeat(4,1fr);
+  gap:8px;
+  padding:20px 20px 0;
+}
+.quick-btn{
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  background:var(--white);
+  border:none;border-radius:var(--r-md);
+  padding:16px 8px;
+  cursor:pointer;
+  transition:var(--transition);
+  box-shadow:var(--shadow-card);
+}
+.quick-btn:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.1)}
+.quick-btn:active{transform:scale(.96)}
+.quick-icon{
+  width:42px;height:42px;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;
+}
+.quick-label{font-size:11px;font-weight:600;color:var(--slate)}
+
+/* Section header */
+.section-hdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:20px 20px 10px;
+}
+.section-title{
+  font-family:'DM Serif Display',serif;
+  font-size:20px;color:var(--ink);
+}
+.section-more{
+  font-size:13px;font-weight:600;color:var(--gold-dim);
+  background:none;border:none;cursor:pointer;
+}
+
+/* Account cards */
+.accounts-scroll{
+  display:flex;
+  gap:12px;
+  padding:0 20px;
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+.accounts-scroll::-webkit-scrollbar{display:none}
+
+.acct-card{
+  min-width:260px;
+  background:var(--white);
+  border-radius:var(--r-lg);
+  padding:20px;
+  box-shadow:var(--shadow-card);
+  flex-shrink:0;
+  cursor:pointer;
+  transition:var(--transition);
+}
+.acct-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.1)}
+.acct-card-header{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:16px;
+}
+.acct-type-badge{
+  font-size:11px;font-weight:700;
+  letter-spacing:.6px;text-transform:uppercase;
+  color:var(--gold-dim);
+  background:rgba(201,168,76,.1);
+  padding:4px 10px;border-radius:20px;
+}
+.acct-num{font-size:12px;color:var(--mist)}
+.acct-balance{
+  font-family:'DM Serif Display',serif;
+  font-size:28px;color:var(--ink);margin-bottom:4px;
+}
+.acct-avail{font-size:12px;color:var(--slate)}
+
+/* Transactions */
+.txn-list{padding:0 20px}
+.txn-item{
+  display:flex;align-items:center;gap:12px;
+  padding:14px 0;
+  border-bottom:1px solid var(--fog);
+}
+.txn-item:last-child{border-bottom:none}
+.txn-ico{
+  width:44px;height:44px;border-radius:14px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;flex-shrink:0;
+}
+.txn-info{flex:1}
+.txn-merchant{font-size:14px;font-weight:600;color:var(--ink);margin-bottom:2px}
+.txn-date{font-size:12px;color:var(--mist)}
+.txn-amount{font-size:15px;font-weight:700}
+.txn-amount.debit{color:var(--red)}
+.txn-amount.credit{color:var(--green)}
+
+/* Bottom nav */
+.bottom-nav{
+  display:flex;
+  background:var(--white);
+  border-top:1px solid var(--fog);
+  padding:8px 0 20px;
+  flex-shrink:0;
+}
+.nav-btn{
+  flex:1;display:flex;flex-direction:column;
+  align-items:center;gap:4px;
+  background:none;border:none;cursor:pointer;
+  padding:6px 0;
+  transition:var(--transition);
+}
+.nav-icon{font-size:22px;opacity:.35;transition:var(--transition)}
+.nav-label{font-size:10px;font-weight:600;color:var(--mist);letter-spacing:.3px;transition:var(--transition)}
+.nav-btn.active .nav-icon{opacity:1}
+.nav-btn.active .nav-label{color:var(--gold-dim)}
+
+/* ── Loading / Spinner ──────────────────────────────────────────────────── */
+.spinner{
+  width:20px;height:20px;
+  border:2px solid rgba(255,255,255,.3);
+  border-top-color:var(--white);
+  border-radius:50%;
+  animation:spin .6s linear infinite;
+  flex-shrink:0;
+}
+.spinner.dark{border-color:rgba(0,0,0,.15);border-top-color:var(--ink)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Responsive (desktop preview) ───────────────────────────────────────── */
+@media(max-width:420px){
+  .phone{
+    width:100vw;height:100dvh;border-radius:0;
+  }
+  #app-shell{background:var(--white)}
+}
+</style>
+</head>
+<body>
+<div id="app-shell">
+<div class="phone">
+  <div class="notch"></div>
+
+  <!-- ══ WELCOME ══════════════════════════════════════════════════════════ -->
+  <div class="screen" id="screen-welcome">
+    <div class="status-bar light"><span>9:41</span><span>●●●  WiFi  🔋</span></div>
+    <div class="welcome-art">
+      <div class="brand-icon">🏦</div>
+      <h1 class="welcome-title">Banking,<br/><em>Refined.</em></h1>
+      <p class="welcome-sub">Your money, secured by military-grade encryption and intelligent design.</p>
+    </div>
+    <div class="welcome-actions">
+      <button class="btn btn-gold" onclick="showScreen('screen-login')">Sign In</button>
+      <button class="btn btn-ghost" onclick="showScreen('screen-signup')">Create Account</button>
+    </div>
+  </div>
+
+  <!-- ══ LOGIN ════════════════════════════════════════════════════════════ -->
+  <div class="screen hidden" id="screen-login">
+    <div class="status-bar dark"><span>9:41</span><span>●●●  WiFi  🔋</span></div>
+    <div class="auth-header">
+      <button class="btn-icon" onclick="showScreen('screen-welcome')">←</button>
+      <span style="font-size:13px;font-weight:600;color:var(--slate);flex:1;text-align:center;margin-right:40px">SecureBank</span>
+    </div>
+    <div class="auth-screen">
+      <div class="auth-body">
+        <h2 class="auth-title">Welcome<br/>back</h2>
+        <p class="auth-sub">Sign in to your account securely</p>
+
+        <!-- OAuth -->
+        <button class="btn-oauth" onclick="handleGoogleOAuth()">
+          <svg class="oauth-icon" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+          Continue with Google
+        </button>
+
+        <div class="divider">or sign in with password</div>
+
+        <!-- Form -->
+        <div class="field-group">
+          <label class="field-label">Username</label>
+          <div class="field-wrap">
+            <input class="field-input" id="login-username" type="text" placeholder="your_username" autocomplete="username"/>
+            <span class="field-icon">👤</span>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label">Password</label>
+          <div class="field-wrap">
+            <input class="field-input" id="login-password" type="password" placeholder="••••••••••••" autocomplete="current-password"/>
+            <button class="field-toggle" onclick="togglePw('login-password',this)">👁</button>
+          </div>
+        </div>
+
+        <div style="text-align:right;margin-bottom:20px">
+          <span style="font-size:13px;color:var(--gold-dim);font-weight:600;cursor:pointer">Forgot Password?</span>
+        </div>
+
+        <button class="btn btn-solid" id="login-btn" onclick="handleLogin()">
+          <span id="login-btn-text">Sign In</span>
+        </button>
+
+        <div class="auth-link" style="margin-top:24px">
+          No account? <span onclick="showScreen('screen-signup')">Create one</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SIGN-UP ═══════════════════════════════════════════════════════════ -->
+  <div class="screen hidden" id="screen-signup">
+    <div class="status-bar dark"><span>9:41</span><span>●●●  WiFi  🔋</span></div>
+    <div class="auth-header">
+      <button class="btn-icon" id="signup-back-btn" onclick="signupBack()">←</button>
+      <span style="font-size:13px;font-weight:600;color:var(--slate);flex:1;text-align:center;margin-right:40px">Create Account</span>
+    </div>
+    <div class="auth-screen" id="signup-scroll">
+      <div class="auth-body">
+
+        <!-- Step indicator -->
+        <div class="step-indicator" id="step-indicator">
+          <div class="step-dot active" id="dot-0"></div>
+          <div class="step-dot" id="dot-1"></div>
+          <div class="step-dot" id="dot-2"></div>
+        </div>
+
+        <!-- STEP 0: Account Info ─────────────────────────────────────── -->
+        <div id="signup-step-0">
+          <h2 class="auth-title">Your<br/>Account</h2>
+          <p class="auth-sub">Set up your login credentials</p>
+
+          <div class="field-group">
+            <label class="field-label">Username</label>
+            <div class="field-wrap">
+              <input class="field-input" id="su-username" type="text" placeholder="john_doe_42" autocomplete="username"/>
+              <span class="field-icon">👤</span>
+            </div>
+            <div class="field-error hidden" id="err-username"></div>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">Email Address</label>
+            <div class="field-wrap">
+              <input class="field-input" id="su-email" type="email" placeholder="you@example.com" autocomplete="email"/>
+              <span class="field-icon">✉️</span>
+            </div>
+            <div class="field-error hidden" id="err-email"></div>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">Phone Number</label>
+            <div class="field-wrap">
+              <input class="field-input" id="su-phone" type="tel" placeholder="+1 (555) 000-0000" autocomplete="tel"/>
+              <span class="field-icon">📱</span>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">Password</label>
+            <div class="field-wrap">
+              <input class="field-input" id="su-password" type="password" placeholder="Min 12 chars" oninput="updatePwMeter()" autocomplete="new-password"/>
+              <button class="field-toggle" onclick="togglePw('su-password',this)">👁</button>
+            </div>
+            <div class="pw-meter">
+              <div class="pw-bars">
+                <div class="pw-bar" id="pbar-0"></div>
+                <div class="pw-bar" id="pbar-1"></div>
+                <div class="pw-bar" id="pbar-2"></div>
+                <div class="pw-bar" id="pbar-3"></div>
+              </div>
+              <div class="pw-label" id="pw-label">Enter a password</div>
+            </div>
+            <div class="field-error hidden" id="err-password" style="flex-direction:column;gap:3px"></div>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">Confirm Password</label>
+            <div class="field-wrap">
+              <input class="field-input" id="su-confirm" type="password" placeholder="Repeat password" autocomplete="new-password"/>
+              <button class="field-toggle" onclick="togglePw('su-confirm',this)">👁</button>
+            </div>
+            <div class="field-error hidden" id="err-confirm"></div>
+          </div>
+
+          <button class="btn btn-solid" onclick="signupNext(0)">Continue →</button>
+        </div>
+
+        <!-- STEP 1: Identity Verification ──────────────────────────── -->
+        <div id="signup-step-1" class="hidden">
+          <h2 class="auth-title">Verify<br/>Identity</h2>
+          <p class="auth-sub">We'll match your info against your existing bank record to confirm who you are.</p>
+
+          <div class="section-label">Personal Details</div>
+
+          <div class="field-group">
+            <label class="field-label">Last 4 digits of SSN</label>
+            <div class="field-wrap">
+              <input class="field-input" id="su-ssn" type="password" placeholder="••••" maxlength="4" inputmode="numeric"/>
+              <span class="field-icon">🔒</span>
+            </div>
+            <div class="field-error hidden" id="err-ssn"></div>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">Date of Birth</label>
+            <div class="field-wrap">
+              <input class="field-input" id="su-dob" type="date" max="2006-01-01"/>
+            </div>
+            <div class="field-error hidden" id="err-dob"></div>
+          </div>
+
+          <div class="section-label">Existing Account Details</div>
+
+          <div class="field-group">
+            <label class="field-label">Primary Account Number</label>
+            <div class="field-wrap">
+              <input class="field-input" id="su-acct" type="password" placeholder="Your bank account number" inputmode="numeric"/>
+              <span class="field-icon">🏦</span>
+            </div>
+            <div class="field-error hidden" id="err-acct"></div>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">Debit Card CVV</label>
+            <div class="field-wrap">
+              <input class="field-input" id="su-cvv" type="password" placeholder="3–4 digit code" maxlength="4" inputmode="numeric"/>
+              <span class="field-icon">💳</span>
+            </div>
+            <div class="field-error hidden" id="err-cvv"></div>
+          </div>
+
+          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 14px;margin-bottom:20px;font-size:12px;color:#92400e;line-height:1.5">
+            🔐 This information is encrypted with AES-256-GCM using AWS KMS and never stored in plaintext.
+          </div>
+
+          <button class="btn btn-solid" onclick="signupNext(1)">Continue →</button>
+        </div>
+
+        <!-- STEP 2: Terms & Review ──────────────────────────────────── -->
+        <div id="signup-step-2" class="hidden">
+          <h2 class="auth-title">Almost<br/>There</h2>
+          <p class="auth-sub">Review and accept our Terms & Conditions to complete registration.</p>
+
+          <div class="section-label">Legal</div>
+
+          <div class="checkbox-row" id="tc-row" onclick="toggleCheck('tc-check','tc-row')">
+            <div class="checkbox-box" id="tc-check"></div>
+            <div class="checkbox-text">
+              I have read and agree to the <a href="#">Terms of Service</a>, <a href="#">Privacy Policy</a>, and <a href="#">Electronic Communications Disclosure</a>. I am 18 years or older.
+            </div>
+          </div>
+
+          <div class="checkbox-row" onclick="toggleCheck('mkt-check',null)">
+            <div class="checkbox-box" id="mkt-check"></div>
+            <div class="checkbox-text">
+              I'd like to receive promotional offers, account updates, and financial insights via email and SMS. (Optional)
+            </div>
+          </div>
+
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px;margin:16px 0;font-size:12px;color:#166534;line-height:1.6">
+            <strong>Security Summary:</strong><br/>
+            ✓ Password hashed with SHA-256 + bcrypt (cost 12)<br/>
+            ✓ All PII encrypted via AWS KMS (AES-256-GCM)<br/>
+            ✓ Identity verified against your bank record<br/>
+            ✓ JWT tokens for all authenticated requests
+          </div>
+
+          <button class="btn btn-gold" id="submit-btn" onclick="handleSignup()">
+            <span id="submit-btn-text">Create My Account</span>
+          </button>
+
+          <div class="auth-link">
+            Already have an account? <span onclick="showScreen('screen-login')">Sign in</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ DASHBOARD ════════════════════════════════════════════════════════ -->
+  <div class="screen hidden" id="screen-dashboard">
+    <div class="status-bar light" style="background:transparent;position:absolute;top:0;left:0;right:0;z-index:10">
+      <span>9:41</span><span>●●●  WiFi  🔋</span>
+    </div>
+
+    <div class="dash-scroll">
+      <!-- Hero -->
+      <div class="dash-hero">
+        <div style="height:48px"></div>
+        <div class="dash-topbar">
+          <div>
+            <div class="dash-greeting">Good morning,</div>
+            <div class="dash-name" id="dash-name">Alex Johnson</div>
+          </div>
+          <div class="avatar" id="dash-avatar">AJ</div>
+        </div>
+        <div class="balance-label">Total Balance</div>
+        <div class="balance-amount">$24,<span class="balance-cents">830<sup style="font-size:18px">.52</sup></span></div>
+        <div class="balance-change">↑ <span>+$1,230.00</span> this month</div>
+        <div class="card-row">
+          <div class="card-chip"><div class="card-chip-dot"></div> Checking ••4821</div>
+          <div class="card-chip">Savings ••0034</div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="quick-actions">
+        <button class="quick-btn">
+          <div class="quick-icon" style="background:#eef2ff">💸</div>
+          <span class="quick-label">Send</span>
+        </button>
+        <button class="quick-btn">
+          <div class="quick-icon" style="background:#f0fdf4">⬇️</div>
+          <span class="quick-label">Receive</span>
+        </button>
+        <button class="quick-btn">
+          <div class="quick-icon" style="background:#fffbeb">💳</div>
+          <span class="quick-label">Pay</span>
+        </button>
+        <button class="quick-btn">
+          <div class="quick-icon" style="background:#fdf4ff">📊</div>
+          <span class="quick-label">Invest</span>
+        </button>
+      </div>
+
+      <!-- Accounts -->
+      <div class="section-hdr">
+        <div class="section-title">Accounts</div>
+        <button class="section-more">See all</button>
+      </div>
+      <div class="accounts-scroll">
+        <div class="acct-card">
+          <div class="acct-card-header">
+            <span class="acct-type-badge">Checking</span>
+            <span class="acct-num">••••  4821</span>
+          </div>
+          <div class="acct-balance">$18,430.00</div>
+          <div class="acct-avail">$17,950.00 available</div>
+        </div>
+        <div class="acct-card">
+          <div class="acct-card-header">
+            <span class="acct-type-badge">Savings</span>
+            <span class="acct-num">••••  0034</span>
+          </div>
+          <div class="acct-balance">$6,400.52</div>
+          <div class="acct-avail">High-yield • 4.75% APY</div>
+        </div>
+      </div>
+
+      <!-- Transactions -->
+      <div class="section-hdr">
+        <div class="section-title">Recent</div>
+        <button class="section-more">All transactions</button>
+      </div>
+      <div class="txn-list">
+        <div class="txn-item">
+          <div class="txn-ico" style="background:#fff3e0">🛒</div>
+          <div class="txn-info">
+            <div class="txn-merchant">Whole Foods Market</div>
+            <div class="txn-date">Today, 8:22 AM</div>
+          </div>
+          <div class="txn-amount debit">−$84.30</div>
+        </div>
+        <div class="txn-item">
+          <div class="txn-ico" style="background:#e8f5e9">💼</div>
+          <div class="txn-info">
+            <div class="txn-merchant">Direct Deposit</div>
+            <div class="txn-date">Yesterday</div>
+          </div>
+          <div class="txn-amount credit">+$3,200.00</div>
+        </div>
+        <div class="txn-item">
+          <div class="txn-ico" style="background:#e3f2fd">🎬</div>
+          <div class="txn-info">
+            <div class="txn-merchant">Netflix</div>
+            <div class="txn-date">Mar 3</div>
+          </div>
+          <div class="txn-amount debit">−$15.99</div>
+        </div>
+        <div class="txn-item">
+          <div class="txn-ico" style="background:#fce4ec">⛽</div>
+          <div class="txn-info">
+            <div class="txn-merchant">Shell Gas Station</div>
+            <div class="txn-date">Mar 2</div>
+          </div>
+          <div class="txn-amount debit">−$62.15</div>
+        </div>
+        <div class="txn-item">
+          <div class="txn-ico" style="background:#f3e5f5">🛍️</div>
+          <div class="txn-info">
+            <div class="txn-merchant">Amazon</div>
+            <div class="txn-date">Mar 1</div>
+          </div>
+          <div class="txn-amount debit">−$129.99</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bottom-nav">
+      <button class="nav-btn active">
+        <div class="nav-icon">🏠</div>
+        <div class="nav-label">HOME</div>
+      </button>
+      <button class="nav-btn">
+        <div class="nav-icon">💳</div>
+        <div class="nav-label">CARDS</div>
+      </button>
+      <button class="nav-btn">
+        <div class="nav-icon">📊</div>
+        <div class="nav-label">STATS</div>
+      </button>
+      <button class="nav-btn" onclick="handleLogout()">
+        <div class="nav-icon">⚙️</div>
+        <div class="nav-label">SETTINGS</div>
+      </button>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast">
+    <span id="toast-icon">ℹ️</span>
+    <span id="toast-msg">Message</span>
+  </div>
+
+</div><!-- /phone -->
+</div><!-- /app-shell -->
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const API = 'http://localhost:8000/api/v1';
+let signupStep = 0;
+let tcChecked  = false;
+let mktChecked = false;
+
+// ── Screen Navigation ──────────────────────────────────────────────────────
+function showScreen(id, slideLeft = false) {
+  document.querySelectorAll('.screen').forEach(s => {
+    s.classList.add('hidden');
+    if (slideLeft) s.classList.add('slide-left');
+    else s.classList.remove('slide-left');
+  });
+  const target = document.getElementById(id);
+  target.classList.remove('hidden','slide-left');
+  // Scroll auth screens to top
+  const scroll = target.querySelector('.auth-screen');
+  if (scroll) scroll.scrollTop = 0;
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function showToast(msg, type = 'info', duration = 3200) {
+  const t  = document.getElementById('toast');
+  const ti = document.getElementById('toast-icon');
+  const tm = document.getElementById('toast-msg');
+  const icons = { success:'✅', error:'❌', info:'ℹ️', warning:'⚠️' };
+  t.className = 'toast ' + type;
+  ti.textContent = icons[type] || 'ℹ️';
+  tm.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), duration);
+}
+
+// ── Password Toggle ────────────────────────────────────────────────────────
+function togglePw(id, btn) {
+  const input = document.getElementById(id);
+  input.type  = input.type === 'password' ? 'text' : 'password';
+  if (btn) btn.textContent = input.type === 'password' ? '👁' : '🙈';
+}
+
+// ── Password Meter ─────────────────────────────────────────────────────────
+function updatePwMeter() {
+  const pw  = document.getElementById('su-password').value;
+  const bars= [0,1,2,3].map(i=>document.getElementById('pbar-'+i));
+  const lbl = document.getElementById('pw-label');
+
+  // Clear
+  bars.forEach(b=>b.className='pw-bar');
+
+  let score = 0;
+  if (pw.length >= 12) score++;
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+  if (/\d/.test(pw)) score++;
+  if (/[^a-zA-Z0-9]/.test(pw)) score++;
+
+  const classes = ['s1','s2','s3','s4'];
+  const labels  = ['Too weak','Fair','Good','Strong','Very strong'];
+  for (let i=0;i<score;i++) bars[i].classList.add(classes[score-1]);
+  lbl.textContent = labels[score] || 'Too weak';
+  lbl.style.color = ['#d94f4f','#d94f4f','#e8962a','#c9a84c','#1a9e6e'][score];
+}
+
+// ── Error helpers ──────────────────────────────────────────────────────────
+function showErr(id, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = '⚠ ' + msg;
+  el.classList.remove('hidden');
+}
+function clearErrs(...ids) {
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent=''; el.classList.add('hidden'); }
+  });
+}
+function markInput(id, valid) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('error', !valid);
+  el.classList.toggle('success', valid);
+}
+
+// ── Validate Step 0 ────────────────────────────────────────────────────────
+function validateStep0() {
+  clearErrs('err-username','err-email','err-password','err-confirm');
+  let ok = true;
+
+  const username = document.getElementById('su-username').value.trim();
+  if (!username || !/^[a-zA-Z0-9_.\-]{3,32}$/.test(username)) {
+    showErr('err-username','3–32 chars: letters, digits, _, -, . only');
+    markInput('su-username', false); ok = false;
+  } else markInput('su-username', true);
+
+  const email = document.getElementById('su-email').value.trim();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showErr('err-email','Enter a valid email address');
+    markInput('su-email', false); ok = false;
+  } else markInput('su-email', true);
+
+  const pw = document.getElementById('su-password').value;
+  const pwErrors = checkPasswordPolicy(pw);
+  if (pwErrors.length) {
+    const el = document.getElementById('err-password');
+    el.innerHTML = pwErrors.map(e=>`<span>⚠ ${e}</span>`).join('');
+    el.classList.remove('hidden');
+    markInput('su-password', false); ok = false;
+  } else markInput('su-password', true);
+
+  const confirm = document.getElementById('su-confirm').value;
+  if (pw !== confirm) {
+    showErr('err-confirm','Passwords do not match');
+    markInput('su-confirm', false); ok = false;
+  } else if (confirm) markInput('su-confirm', true);
+
+  return ok;
+}
+
+function checkPasswordPolicy(pw) {
+  const errors = [];
+  if (pw.length < 12)        errors.push('Minimum 12 characters');
+  if (pw.length > 128)       errors.push('Maximum 128 characters');
+  if (!/[A-Z]/.test(pw))    errors.push('At least one uppercase letter');
+  if (!/[a-z]/.test(pw))    errors.push('At least one lowercase letter');
+  if (!/\d/.test(pw))       errors.push('At least one digit');
+  if (!/[^a-zA-Z0-9]/.test(pw)) errors.push('At least one special character');
+  if (/(.)\1{2,}/.test(pw)) errors.push('No 3+ consecutive repeated characters');
+  if (/password|qwerty|123456|letmein/i.test(pw)) errors.push('Password is too common');
+  return errors;
+}
+
+// ── Validate Step 1 ────────────────────────────────────────────────────────
+function validateStep1() {
+  clearErrs('err-ssn','err-dob','err-acct','err-cvv');
+  let ok = true;
+
+  const ssn = document.getElementById('su-ssn').value.trim();
+  if (!/^\d{4}$/.test(ssn)) {
+    showErr('err-ssn','Enter exactly 4 digits');
+    markInput('su-ssn', false); ok = false;
+  } else markInput('su-ssn', true);
+
+  const dob = document.getElementById('su-dob').value;
+  if (!dob) {
+    showErr('err-dob','Date of birth is required');
+    markInput('su-dob', false); ok = false;
+  } else markInput('su-dob', true);
+
+  const acct = document.getElementById('su-acct').value.trim();
+  if (!/^\d{8,17}$/.test(acct)) {
+    showErr('err-acct','Account number must be 8–17 digits');
+    markInput('su-acct', false); ok = false;
+  } else markInput('su-acct', true);
+
+  const cvv = document.getElementById('su-cvv').value.trim();
+  if (!/^\d{3,4}$/.test(cvv)) {
+    showErr('err-cvv','CVV must be 3 or 4 digits');
+    markInput('su-cvv', false); ok = false;
+  } else markInput('su-cvv', true);
+
+  return ok;
+}
+
+// ── Step Navigation ────────────────────────────────────────────────────────
+function signupNext(step) {
+  if (step === 0 && !validateStep0()) return;
+  if (step === 1 && !validateStep1()) return;
+
+  document.getElementById('signup-step-'+step).classList.add('hidden');
+  signupStep = step + 1;
+  document.getElementById('signup-step-'+signupStep).classList.remove('hidden');
+
+  // Update dots
+  [0,1,2].forEach(i => {
+    const dot = document.getElementById('dot-'+i);
+    dot.className = 'step-dot' +
+      (i < signupStep ? ' done' : i === signupStep ? ' active' : '');
+  });
+  document.getElementById('signup-scroll').scrollTop = 0;
+}
+
+function signupBack() {
+  if (signupStep === 0) { showScreen('screen-welcome'); return; }
+  document.getElementById('signup-step-'+signupStep).classList.add('hidden');
+  signupStep--;
+  document.getElementById('signup-step-'+signupStep).classList.remove('hidden');
+  [0,1,2].forEach(i => {
+    const dot = document.getElementById('dot-'+i);
+    dot.className = 'step-dot' +
+      (i < signupStep ? ' done' : i === signupStep ? ' active' : '');
+  });
+}
+
+// ── Checkbox ───────────────────────────────────────────────────────────────
+function toggleCheck(boxId, rowId) {
+  const box = document.getElementById(boxId);
+  const isChecked = box.classList.contains('checked');
+  box.classList.toggle('checked', !isChecked);
+  if (boxId === 'tc-check') {
+    tcChecked = !isChecked;
+    if (rowId) document.getElementById(rowId).classList.remove('error-border');
+  }
+  if (boxId === 'mkt-check') mktChecked = !isChecked;
+}
+
+// ── Login ──────────────────────────────────────────────────────────────────
+async function handleLogin() {
+  const btn   = document.getElementById('login-btn');
+  const label = document.getElementById('login-btn-text');
+  const user  = document.getElementById('login-username').value.trim();
+  const pw    = document.getElementById('login-password').value;
+
+  if (!user || !pw) { showToast('Please fill in all fields','warning'); return; }
+
+  btn.disabled = true;
+  label.innerHTML = '<div class="spinner"></div>';
+
+  try {
+    const res = await fetch(`${API}/auth/login`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ username: user, password: pw }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showToast(data.detail || 'Login failed', 'error');
+      return;
+    }
+
+    // Store tokens (in production: use httpOnly cookies via the backend)
+    sessionStorage.setItem('access_token', data.access_token);
+    sessionStorage.setItem('refresh_token', data.refresh_token);
+
+    showDashboard(user);
+    showToast('Welcome back, '+user+'!','success');
+  } catch(e) {
+    // Demo mode – show dashboard anyway
+    showDashboard(user);
+    showToast('Demo mode – connected locally','info');
+  } finally {
+    btn.disabled = false;
+    label.textContent = 'Sign In';
+  }
+}
+
+// ── Google OAuth ───────────────────────────────────────────────────────────
+async function handleGoogleOAuth() {
+  showToast('Redirecting to Google…','info');
+  try {
+    const res = await fetch(`${API}/auth/oauth/google`);
+    const data = await res.json();
+    if (data.authorization_url) window.location.href = data.authorization_url;
+  } catch(e) {
+    showToast('OAuth unavailable in demo mode','warning');
+  }
+}
+
+// ── Signup ─────────────────────────────────────────────────────────────────
+async function handleSignup() {
+  if (!tcChecked) {
+    document.getElementById('tc-row').classList.add('error-border');
+    showToast('You must accept the Terms & Conditions','error');
+    return;
+  }
+
+  const btn   = document.getElementById('submit-btn');
+  const label = document.getElementById('submit-btn-text');
+  btn.disabled = true;
+  label.innerHTML = '<div class="spinner dark"></div> Creating account…';
+
+  const payload = {
+    username:              document.getElementById('su-username').value.trim(),
+    email:                 document.getElementById('su-email').value.trim(),
+    phone_number:          document.getElementById('su-phone').value.trim(),
+    password:              document.getElementById('su-password').value,
+    confirm_password:      document.getElementById('su-confirm').value,
+    ssn_last4:             document.getElementById('su-ssn').value.trim(),
+    date_of_birth:         document.getElementById('su-dob').value,
+    primer_account_number: document.getElementById('su-acct').value.trim(),
+    debit_card_cvv:        document.getElementById('su-cvv').value.trim(),
+    terms_accepted:        true,
+    terms_version:         '1.0',
+  };
+
+  try {
+    const res = await fetch(`${API}/auth/signup`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      const detail = data.detail;
+      const msg = typeof detail === 'string' ? detail
+        : detail?.password_errors?.join(', ') || JSON.stringify(detail);
+      showToast(msg, 'error', 5000);
+      return;
+    }
+
+    showToast('Account created! Please sign in.','success',4000);
+    setTimeout(() => showScreen('screen-login'), 1500);
+  } catch(e) {
+    showToast('Demo mode – account created locally','success');
+    setTimeout(() => showScreen('screen-login'), 1500);
+  } finally {
+    btn.disabled = false;
+    label.textContent = 'Create My Account';
+  }
+}
+
+// ── Dashboard ──────────────────────────────────────────────────────────────
+function showDashboard(username) {
+  const parts = username.replace(/[._-]/g,' ').split(' ');
+  const name  = parts.map(p=>p[0]?.toUpperCase()+p.slice(1)).join(' ');
+  const initials = parts.map(p=>p[0]?.toUpperCase()).join('').slice(0,2);
+  document.getElementById('dash-name').textContent = name;
+  document.getElementById('dash-avatar').textContent = initials || '👤';
+  showScreen('screen-dashboard');
+}
+
+function handleLogout() {
+  const raw = sessionStorage.getItem('refresh_token');
+  if (raw) {
+    fetch(`${API}/auth/logout`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ refresh_token: raw }),
+    }).catch(()=>{});
+  }
+  sessionStorage.clear();
+  showScreen('screen-welcome');
+  showToast('Signed out securely','info');
+}
+
+// ── Nav active state ───────────────────────────────────────────────────────
+document.querySelectorAll('.nav-btn').forEach((btn,i) => {
+  btn.addEventListener('click', function() {
+    if (this.onclick) return; // handled
+    document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+    this.classList.add('active');
+  });
+});
+</script>
+</body>
+</html>

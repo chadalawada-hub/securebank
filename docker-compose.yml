@@ -1,0 +1,37 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: securebank_db
+    environment:
+      POSTGRES_USER:     bankuser
+      POSTGRES_PASSWORD: bankpass
+      POSTGRES_DB:       securebank
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bankuser -d securebank"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: securebank_api
+    env_file: ./backend/.env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://bankuser:bankpass@postgres:5432/securebank
+      DATABASE_SYNC_URL: postgresql://bankuser:bankpass@postgres:5432/securebank
+
+volumes:
+  pgdata:
