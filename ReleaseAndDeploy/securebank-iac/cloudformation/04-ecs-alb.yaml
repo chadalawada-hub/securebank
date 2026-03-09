@@ -1,0 +1,383 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  SecureBank Dev - Stack 4/5 - ECS Fargate Cluster, ALB, S3 Frontend
+  Creates the Application Load Balancer, ECS cluster, task definition,
+  service with FARGATE_SPOT, CloudWatch log group, and S3 frontend bucket.
+  Deploy AFTER stack 03-ecr-iam.yaml.
+  NOTE: ACM certificate must already exist. Run:
+    aws acm request-certificate --domain-name dev.yourdomain.com --validation-method DNS
+  and validate it before deploying this stack.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: securebank
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+  # Container sizing — minimum for dev (0.25 vCPU / 512 MB = ~$9/mo standard, ~$3/mo Spot)
+  TaskCpu:
+    Type: String
+    Default: "256"
+    AllowedValues: ["256", "512", "1024", "2048"]
+    Description: Fargate vCPU units (256 = 0.25 vCPU)
+
+  TaskMemory:
+    Type: String
+    Default: "512"
+    AllowedValues: ["512", "1024", "2048", "4096"]
+    Description: Fargate memory in MB
+
+  DesiredCount:
+    Type: Number
+    Default: 1
+    MinValue: 0
+    MaxValue: 10
+    Description: Number of running Fargate tasks (1 for dev, 2+ for prod)
+
+  UseFargateSpot:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >
+      true = FARGATE_SPOT (~70% cheaper, may be interrupted for 2 min).
+      false = standard FARGATE (predictable, no interruptions).
+
+  AcmCertificateArn:
+    Type: String
+    Description: >
+      ARN of an ACM certificate for your domain.
+      Get it from: aws acm list-certificates
+
+  # Placeholder image — GitHub Actions will replace this on first deploy
+  ContainerImage:
+    Type: String
+    Default: public.ecr.aws/nginx/nginx:stable-alpine
+    Description: >
+      Initial placeholder image. GitHub Actions updates this automatically.
+
+  LogRetentionDays:
+    Type: Number
+    Default: 14
+    AllowedValues: [1, 3, 7, 14, 30, 60, 90]
+
+Conditions:
+  UseSpot: !Equals [!Ref UseFargateSpot, "true"]
+
+Resources:
+
+  # ─── CloudWatch Log Group ────────────────────────────────────
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /ecs/${ProjectName}-${Environment}
+      RetentionInDays: !Ref LogRetentionDays
+
+  # ─── ECS Cluster ─────────────────────────────────────────────
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub ${ProjectName}-${Environment}-cluster
+      CapacityProviders:
+        - FARGATE
+        - FARGATE_SPOT
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: !If [UseSpot, FARGATE_SPOT, FARGATE]
+          Weight: 1
+      ClusterSettings:
+        - Name: containerInsights
+          Value: disabled     # Enable in prod for ~$0.50/mo extra visibility
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ─── ECS Task Definition ──────────────────────────────────────
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${ProjectName}-${Environment}-api
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      Cpu: !Ref TaskCpu
+      Memory: !Ref TaskMemory
+      ExecutionRoleArn: !ImportValue
+        Fn::Sub: ${ProjectName}-${Environment}-TaskExecRoleArn
+      TaskRoleArn: !ImportValue
+        Fn::Sub: ${ProjectName}-${Environment}-TaskRoleArn
+      ContainerDefinitions:
+        - Name: securebank-api
+          Image: !Ref ContainerImage
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8000
+              Protocol: tcp
+          # Secrets injected from Secrets Manager at container startup
+          # (never stored as plaintext in task definition)
+          Secrets:
+            - Name: DATABASE_URL
+              ValueFrom: !ImportValue
+                Fn::Sub: ${ProjectName}-${Environment}-DbUrlSecretArn
+            - Name: SECRET_KEY
+              ValueFrom: !Sub
+                - "${Arn}:secret_key::"
+                - Arn: !ImportValue
+                    Fn::Sub: ${ProjectName}-${Environment}-JwtSecretArn
+            - Name: KMS_KEY_ARN
+              ValueFrom: !ImportValue
+                Fn::Sub: ${ProjectName}-${Environment}-KmsKeyArnSecretArn
+          Environment:
+            - Name: APP_ENV
+              Value: !Ref Environment
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: LOG_LEVEL
+              Value: !If [UseSpot, "INFO", "INFO"]
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+          HealthCheck:
+            Command: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
+          # Resource limits — protect the container from runaway processes
+          Ulimits:
+            - Name: nofile
+              SoftLimit: 1024
+              HardLimit: 4096
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ─── Application Load Balancer ────────────────────────────────
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub ${ProjectName}-${Environment}-alb
+      Scheme: internet-facing
+      Type: application
+      Subnets:
+        - !ImportValue
+          Fn::Sub: ${ProjectName}-${Environment}-PublicSubnetA
+        - !ImportValue
+          Fn::Sub: ${ProjectName}-${Environment}-PublicSubnetB
+      SecurityGroups:
+        - !ImportValue
+          Fn::Sub: ${ProjectName}-${Environment}-AlbSGId
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: "60"
+        - Key: routing.http2.enabled
+          Value: "true"
+        - Key: access_logs.s3.enabled
+          Value: "false"    # Enable in prod for audit trail
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ─── Target Group ─────────────────────────────────────────────
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${ProjectName}-${Environment}-tg
+      Protocol: HTTP
+      Port: 8000
+      VpcId: !ImportValue
+        Fn::Sub: ${ProjectName}-${Environment}-VpcId
+      TargetType: ip
+      HealthCheckEnabled: true
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: "30"    # Faster task rotation for dev
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ─── ALB Listeners ────────────────────────────────────────────
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: "443"
+            StatusCode: HTTP_301
+
+  HttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Protocol: HTTPS
+      Port: 443
+      Certificates:
+        - CertificateArn: !Ref AcmCertificateArn
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  # ─── ECS Service ─────────────────────────────────────────────
+  EcsService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - HttpsListener
+      - HttpListener
+    Properties:
+      ServiceName: !Sub ${ProjectName}-${Environment}-service
+      Cluster: !Ref EcsCluster
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: !Ref DesiredCount
+      LaunchType: !If [UseSpot, !Ref AWS::NoValue, FARGATE]
+      CapacityProviderStrategy:
+        !If
+          - UseSpot
+          - - CapacityProvider: FARGATE_SPOT
+              Weight: 1
+          - !Ref AWS::NoValue
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !ImportValue
+              Fn::Sub: ${ProjectName}-${Environment}-AppSubnetA
+            - !ImportValue
+              Fn::Sub: ${ProjectName}-${Environment}-AppSubnetB
+          SecurityGroups:
+            - !ImportValue
+              Fn::Sub: ${ProjectName}-${Environment}-FargateSGId
+          AssignPublicIp: DISABLED
+      LoadBalancers:
+        - ContainerName: securebank-api
+          ContainerPort: 8000
+          TargetGroupArn: !Ref TargetGroup
+      HealthCheckGracePeriodSeconds: 60
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 0     # Allow 0 for dev (single task can replace in-place)
+        MaximumPercent: 200
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true             # Auto-rollback if health checks fail
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ─── S3 Frontend Bucket ───────────────────────────────────────
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${ProjectName}-${Environment}-frontend-${AWS::AccountId}
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ["*"]
+            AllowedMethods: [GET]
+            AllowedOrigins: ["*"]
+            MaxAge: 3600
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: s3:GetObject
+            Resource: !Sub ${FrontendBucket.Arn}/*
+
+  # ─── CloudWatch Alarms ───────────────────────────────────────
+  AlbErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ProjectName}-${Environment}-alb-5xx
+      AlarmDescription: ALB 5XX errors exceeding threshold
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !GetAtt ALB.LoadBalancerFullName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+  EcsCpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ProjectName}-${Environment}-ecs-cpu-high
+      AlarmDescription: ECS CPU over 80%
+      Namespace: AWS/ECS
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref EcsCluster
+        - Name: ServiceName
+          Value: !GetAtt EcsService.Name
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  AlbDnsName:
+    Value: !GetAtt ALB.DNSName
+    Description: Point your DNS A record here
+    Export: {Name: !Sub '${ProjectName}-${Environment}-AlbDnsName'}
+
+  AlbArn:
+    Value: !Ref ALB
+    Export: {Name: !Sub '${ProjectName}-${Environment}-AlbArn'}
+
+  AlbCanonicalHostedZoneId:
+    Value: !GetAtt ALB.CanonicalHostedZoneID
+    Export: {Name: !Sub '${ProjectName}-${Environment}-AlbHostedZoneId'}
+
+  EcsClusterName:
+    Value: !Ref EcsCluster
+    Export: {Name: !Sub '${ProjectName}-${Environment}-ClusterName'}
+
+  EcsServiceName:
+    Value: !GetAtt EcsService.Name
+    Export: {Name: !Sub '${ProjectName}-${Environment}-ServiceName'}
+
+  TaskDefinitionArn:
+    Value: !Ref TaskDefinition
+    Export: {Name: !Sub '${ProjectName}-${Environment}-TaskDefArn'}
+
+  FrontendBucketName:
+    Value: !Ref FrontendBucket
+    Export: {Name: !Sub '${ProjectName}-${Environment}-FrontendBucket'}
+
+  FrontendWebsiteUrl:
+    Value: !GetAtt FrontendBucket.WebsiteURL
+    Description: S3 static website URL (use as dev frontend)

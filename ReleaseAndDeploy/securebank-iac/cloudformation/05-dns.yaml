@@ -1,0 +1,73 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  SecureBank Dev - Stack 5/5 - Route 53 DNS
+  Creates DNS records pointing your domain to the ALB and S3 frontend.
+  Deploy LAST, after stack 04-ecs-alb.yaml.
+  Requires an existing Route 53 Hosted Zone for your domain.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: securebank
+
+  Environment:
+    Type: String
+    Default: dev
+
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Description: >
+      Your Route 53 hosted zone ID.
+      Find it: aws route53 list-hosted-zones
+
+  ApiDomainName:
+    Type: String
+    Description: Subdomain for the API (e.g. dev.api.yourdomain.com)
+    Default: dev.api.yourdomain.com
+
+  FrontendDomainName:
+    Type: String
+    Description: Subdomain for the frontend (e.g. dev.yourdomain.com)
+    Default: dev.yourdomain.com
+
+Resources:
+
+  # ─── API DNS → ALB ───────────────────────────────────────────
+  ApiDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref ApiDomainName
+      Type: A
+      AliasTarget:
+        DNSName: !ImportValue
+          Fn::Sub: ${ProjectName}-${Environment}-AlbDnsName
+        HostedZoneId: !ImportValue
+          Fn::Sub: ${ProjectName}-${Environment}-AlbHostedZoneId
+        EvaluateTargetHealth: true
+
+  # ─── Frontend DNS → S3 Website ───────────────────────────────
+  # NOTE: For S3 static website alias, the region-specific hosted zone ID
+  # must be used. The value below is for us-east-1.
+  # See: https://docs.aws.amazon.com/general/latest/gr/s3.html
+  FrontendDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref FrontendDomainName
+      Type: A
+      AliasTarget:
+        DNSName: !Sub
+          - s3-website-us-east-1.amazonaws.com
+          - {}
+        HostedZoneId: Z3AQBSTGFYJSTF    # us-east-1 S3 website hosted zone ID
+        EvaluateTargetHealth: false
+
+Outputs:
+  ApiUrl:
+    Value: !Sub https://${ApiDomainName}
+    Description: SecureBank API URL
+
+  FrontendUrl:
+    Value: !Sub http://${FrontendDomainName}
+    Description: SecureBank frontend URL

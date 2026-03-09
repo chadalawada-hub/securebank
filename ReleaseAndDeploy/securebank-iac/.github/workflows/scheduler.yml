@@ -1,0 +1,151 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# SecureBank — Dev Environment Scheduler
+# ───────────────────────────────────────────────────────────────────────────
+# Automatically stops the dev stack at night and restarts it in the morning.
+# Saves ~50–60% of compute and RDS costs for dev environments.
+#
+# Default schedule (UTC):
+#   Stop  at 01:00 UTC = 8 PM ET / 5 PM PT  (end of business day)
+#   Start at 12:00 UTC = 7 AM ET / 4 AM PT  (start of business day)
+#   Saturday/Sunday: fully stopped
+#
+# Can also be triggered manually from GitHub Actions UI.
+# ═══════════════════════════════════════════════════════════════════════════
+name: Dev Environment Scheduler
+
+on:
+  schedule:
+    # Stop at 01:00 UTC (Mon–Fri only)
+    - cron: '0 1 * * 1-5'
+    # Start at 12:00 UTC (Mon–Fri only)
+    - cron: '0 12 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Start or stop the dev environment"
+        required: true
+        type: choice
+        options: [start, stop]
+
+env:
+  AWS_REGION:   ${{ secrets.AWS_REGION }}
+  PROJECT_NAME: ${{ secrets.PROJECT_NAME }}
+  ENVIRONMENT:  dev
+
+jobs:
+  schedule:
+    name: ${{ github.event_name == 'workflow_dispatch' && inputs.action || 'Scheduled action' }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: GitHubActions-scheduler-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Determine action (schedule vs manual)
+        id: action
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "action=${{ inputs.action }}" >> $GITHUB_OUTPUT
+          else
+            # Determine from cron time: 01:00 UTC = stop, 12:00 UTC = start
+            HOUR=$(date -u +%H)
+            if [ "$HOUR" = "01" ]; then
+              echo "action=stop" >> $GITHUB_OUTPUT
+            else
+              echo "action=start" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      # ─── STOP ──────────────────────────────────────────────────
+      - name: Scale Fargate to 0 tasks
+        if: steps.action.outputs.action == 'stop'
+        run: |
+          CLUSTER=$(aws cloudformation list-exports \
+            --query "Exports[?Name=='${PROJECT_NAME}-${ENVIRONMENT}-ClusterName'].Value" \
+            --output text)
+          SERVICE=$(aws cloudformation list-exports \
+            --query "Exports[?Name=='${PROJECT_NAME}-${ENVIRONMENT}-ServiceName'].Value" \
+            --output text)
+
+          aws ecs update-service \
+            --cluster "${CLUSTER}" \
+            --service "${SERVICE}" \
+            --desired-count 0 \
+            --query "service.desiredCount"
+          echo "⏸️  Fargate scaled to 0"
+
+      - name: Stop RDS instance
+        if: steps.action.outputs.action == 'stop'
+        run: |
+          RDS_ID=$(aws cloudformation list-exports \
+            --query "Exports[?Name=='${PROJECT_NAME}-${ENVIRONMENT}-RdsInstanceId'].Value" \
+            --output text)
+
+          # Only stop if currently available
+          STATUS=$(aws rds describe-db-instances \
+            --db-instance-identifier "${RDS_ID}" \
+            --query "DBInstances[0].DBInstanceStatus" \
+            --output text)
+
+          if [ "$STATUS" = "available" ]; then
+            aws rds stop-db-instance --db-instance-identifier "${RDS_ID}"
+            echo "⏸️  RDS stopping: ${RDS_ID}"
+          else
+            echo "ℹ️  RDS already in status: ${STATUS}, skipping"
+          fi
+
+      # ─── START ─────────────────────────────────────────────────
+      - name: Start RDS instance
+        if: steps.action.outputs.action == 'start'
+        run: |
+          RDS_ID=$(aws cloudformation list-exports \
+            --query "Exports[?Name=='${PROJECT_NAME}-${ENVIRONMENT}-RdsInstanceId'].Value" \
+            --output text)
+
+          STATUS=$(aws rds describe-db-instances \
+            --db-instance-identifier "${RDS_ID}" \
+            --query "DBInstances[0].DBInstanceStatus" \
+            --output text)
+
+          if [ "$STATUS" = "stopped" ]; then
+            aws rds start-db-instance --db-instance-identifier "${RDS_ID}"
+            echo "▶️  RDS starting: ${RDS_ID} ..."
+            aws rds wait db-instance-available --db-instance-identifier "${RDS_ID}"
+            echo "✅ RDS available"
+          else
+            echo "ℹ️  RDS already in status: ${STATUS}, skipping"
+          fi
+
+      - name: Scale Fargate back to 1 task
+        if: steps.action.outputs.action == 'start'
+        run: |
+          CLUSTER=$(aws cloudformation list-exports \
+            --query "Exports[?Name=='${PROJECT_NAME}-${ENVIRONMENT}-ClusterName'].Value" \
+            --output text)
+          SERVICE=$(aws cloudformation list-exports \
+            --query "Exports[?Name=='${PROJECT_NAME}-${ENVIRONMENT}-ServiceName'].Value" \
+            --output text)
+
+          aws ecs update-service \
+            --cluster "${CLUSTER}" \
+            --service "${SERVICE}" \
+            --desired-count 1
+          echo "▶️  Fargate scaled to 1"
+
+      - name: Summary
+        run: |
+          ACTION="${{ steps.action.outputs.action }}"
+          if [ "$ACTION" = "stop" ]; then
+            echo "## ⏸️ Dev Environment Stopped" >> $GITHUB_STEP_SUMMARY
+            echo "RDS and Fargate stopped to save costs overnight." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ▶️ Dev Environment Started" >> $GITHUB_STEP_SUMMARY
+            echo "RDS available and Fargate task running." >> $GITHUB_STEP_SUMMARY
+          fi
