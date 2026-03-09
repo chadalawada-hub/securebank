@@ -1,0 +1,297 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  SecureBank Dev - Stack 2/5 - Security & Database
+  Creates KMS CMK for PII encryption, stores all secrets in Secrets Manager,
+  and provisions RDS PostgreSQL 16 in Single-AZ mode (dev cost-optimised).
+  Deploy AFTER stack 01-vpc.yaml.
+
+# ═══════════════════════════════════════════════════════════════
+# PARAMETERS
+# ═══════════════════════════════════════════════════════════════
+Parameters:
+  ProjectName:
+    Type: String
+    Default: securebank
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+  DbInstanceClass:
+    Type: String
+    Default: db.t3.micro
+    AllowedValues: [db.t3.micro, db.t3.small, db.t3.medium, db.r7g.large]
+    Description: >
+      db.t3.micro = ~$14/mo (Free Tier eligible for new accounts).
+      db.t3.small = ~$27/mo. db.t3.medium = ~$52/mo (use for prod).
+
+  DbAllocatedStorage:
+    Type: Number
+    Default: 20
+    MinValue: 20
+    MaxValue: 100
+    Description: Storage in GB. 20 GB minimum (gp2).
+
+  DbMultiAz:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >
+      false = Single-AZ dev (~$14/mo). true = Multi-AZ prod (~$105/mo).
+
+  DbBackupRetentionDays:
+    Type: Number
+    Default: 3
+    MinValue: 1
+    MaxValue: 35
+    Description: 3 days is fine for dev. Use 7+ for prod.
+
+  DbMasterUsername:
+    Type: String
+    Default: bankadmin
+    NoEcho: false
+
+# ═══════════════════════════════════════════════════════════════
+# CONDITIONS
+# ═══════════════════════════════════════════════════════════════
+Conditions:
+  IsMultiAz: !Equals [!Ref DbMultiAz, "true"]
+
+# ═══════════════════════════════════════════════════════════════
+# RESOURCES
+# ═══════════════════════════════════════════════════════════════
+Resources:
+
+  # ─── KMS Customer Managed Key ────────────────────────────────
+  PiiEncryptionKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub ${ProjectName}-${Environment} PII field encryption key
+      EnableKeyRotation: true          # Annual automatic rotation
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          # Root account gets full access (prevents lockout)
+          - Sid: RootAccess
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: "*"
+          # ECS Task Role will be granted access in Stack 3 (compute)
+          # We allow the account to delegate key usage via IAM
+          - Sid: AllowIAMDelegation
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action:
+              - kms:CreateGrant
+              - kms:ListGrants
+              - kms:RevokeGrant
+            Resource: "*"
+            Condition:
+              Bool:
+                kms:GrantIsForAWSResource: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-${Environment}-pii-key
+        - Key: Environment
+          Value: !Ref Environment
+
+  KmsKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/${ProjectName}-${Environment}-pii
+      TargetKeyId: !Ref PiiEncryptionKey
+
+  # ─── Secrets Manager ─────────────────────────────────────────
+  # JWT Secret Key
+  JwtSecretKey:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub ${ProjectName}/${Environment}/app/secret-key
+      Description: JWT signing secret key
+      GenerateSecretString:
+        SecretStringTemplate: '{}'
+        GenerateStringKey: secret_key
+        PasswordLength: 64
+        ExcludePunctuation: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # DB Master Password (auto-generated)
+  DbMasterPassword:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub ${ProjectName}/${Environment}/db/password
+      Description: RDS master password
+      GenerateSecretString:
+        ExcludeCharacters: '"@/\\'
+        PasswordLength: 32
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # KMS Key ARN stored for app access
+  KmsKeyArnSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub ${ProjectName}/${Environment}/kms/key-arn
+      Description: KMS CMK ARN for PII encryption
+      SecretString: !Sub '{"key_arn":"${PiiEncryptionKey.Arn}","key_id":"${PiiEncryptionKey}"}'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Google OAuth credentials (fill in after creation)
+  GoogleOAuthSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub ${ProjectName}/${Environment}/oauth/google
+      Description: >
+        Google OAuth2 credentials. Update via console or CLI after deployment:
+        aws secretsmanager update-secret --secret-id <ARN>
+        --secret-string '{"client_id":"YOUR_ID","client_secret":"YOUR_SECRET"}'
+      SecretString: '{"client_id":"REPLACE_ME","client_secret":"REPLACE_ME"}'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ─── RDS Subnet Group ────────────────────────────────────────
+  RdsSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupName: !Sub ${ProjectName}-${Environment}-db-subnets
+      DBSubnetGroupDescription: !Sub ${ProjectName} ${Environment} DB subnet group
+      SubnetIds:
+        - !ImportValue
+          Fn::Sub: ${ProjectName}-${Environment}-DbSubnetA
+        - !ImportValue
+          Fn::Sub: ${ProjectName}-${Environment}-DbSubnetB
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ─── RDS PostgreSQL Instance ──────────────────────────────────
+  RdsInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot          # Creates a final snapshot on stack delete
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub ${ProjectName}-${Environment}-postgres
+      DBInstanceClass: !Ref DbInstanceClass
+      Engine: postgres
+      EngineVersion: "16.1"
+      MasterUsername: !Ref DbMasterUsername
+      MasterUserPassword: !Sub
+        - "{{resolve:secretsmanager:${SecretId}}}"
+        - SecretId: !Ref DbMasterPassword
+      DBName: securebank
+      DBSubnetGroupName: !Ref RdsSubnetGroup
+      VPCSecurityGroups:
+        - !ImportValue
+          Fn::Sub: ${ProjectName}-${Environment}-RdsSGId
+      MultiAZ: !If [IsMultiAz, true, false]
+      StorageType: gp2
+      AllocatedStorage: !Ref DbAllocatedStorage
+      StorageEncrypted: true
+      KmsKeyId: !Ref PiiEncryptionKey
+      BackupRetentionPeriod: !Ref DbBackupRetentionDays
+      PreferredBackupWindow: "03:00-04:00"
+      PreferredMaintenanceWindow: "sun:04:00-sun:05:00"
+      DeletionProtection: false        # Keep false for dev (easy teardown)
+      PubliclyAccessible: false
+      EnablePerformanceInsights: false # Enable in prod for extra visibility
+      AutoMinorVersionUpgrade: true
+      CopyTagsToSnapshot: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-${Environment}-postgres
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ─── DB URL Secret (built after RDS endpoint is known) ───────
+  DbUrlSecret:
+    Type: AWS::SecretsManager::Secret
+    DependsOn: RdsInstance
+    Properties:
+      Name: !Sub ${ProjectName}/${Environment}/db/url
+      Description: Full async DB connection URL for FastAPI
+      SecretString: !Sub
+        - "postgresql+asyncpg://${User}:{{resolve:secretsmanager:${PassSecret}}}@${Host}:5432/securebank"
+        - User: !Ref DbMasterUsername
+          PassSecret: !Ref DbMasterPassword
+          Host: !GetAtt RdsInstance.Endpoint.Address
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ─── CloudWatch Alarm: DB CPU ─────────────────────────────────
+  DbCpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ProjectName}-${Environment}-rds-cpu-high
+      AlarmDescription: RDS CPU over 80% for 5 minutes
+      Namespace: AWS/RDS
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: DBInstanceIdentifier
+          Value: !Ref RdsInstance
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+  # ─── CloudWatch Alarm: DB Free Storage ───────────────────────
+  DbStorageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ProjectName}-${Environment}-rds-storage-low
+      AlarmDescription: RDS free storage below 5 GB
+      Namespace: AWS/RDS
+      MetricName: FreeStorageSpace
+      Dimensions:
+        - Name: DBInstanceIdentifier
+          Value: !Ref RdsInstance
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5368709120    # 5 GB in bytes
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: notBreaching
+
+# ═══════════════════════════════════════════════════════════════
+# OUTPUTS
+# ═══════════════════════════════════════════════════════════════
+Outputs:
+  KmsKeyId:
+    Value: !Ref PiiEncryptionKey
+    Export: {Name: !Sub '${ProjectName}-${Environment}-KmsKeyId'}
+
+  KmsKeyArn:
+    Value: !GetAtt PiiEncryptionKey.Arn
+    Export: {Name: !Sub '${ProjectName}-${Environment}-KmsKeyArn'}
+
+  RdsEndpoint:
+    Value: !GetAtt RdsInstance.Endpoint.Address
+    Export: {Name: !Sub '${ProjectName}-${Environment}-RdsEndpoint'}
+
+  RdsInstanceId:
+    Value: !Ref RdsInstance
+    Export: {Name: !Sub '${ProjectName}-${Environment}-RdsInstanceId'}
+
+  DbUrlSecretArn:
+    Value: !Ref DbUrlSecret
+    Export: {Name: !Sub '${ProjectName}-${Environment}-DbUrlSecretArn'}
+
+  JwtSecretArn:
+    Value: !Ref JwtSecretKey
+    Export: {Name: !Sub '${ProjectName}-${Environment}-JwtSecretArn'}
+
+  KmsKeyArnSecretArn:
+    Value: !Ref KmsKeyArnSecret
+    Export: {Name: !Sub '${ProjectName}-${Environment}-KmsKeyArnSecretArn'}
