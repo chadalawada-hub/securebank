@@ -29,8 +29,8 @@ from security import (
     create_access_token, create_refresh_token, decode_access_token,
     validate_password_strength, generate_oauth_state,
 )
-from kms_service import kms_encrypt
-from config import get_settings
+from backend.kms_service import kms_encrypt
+from backend.config import get_settings
 
 settings = get_settings()
 router  = APIRouter(prefix="/auth", tags=["Authentication"])

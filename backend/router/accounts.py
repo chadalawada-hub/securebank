@@ -79,7 +79,7 @@ from database import get_db
 from models import User, BankAccount, Transaction
 from schemas import AccountDetailResponse, AccountSummary, UserProfile, TransactionListResponse, TransactionItem
 from security import decode_access_token
-from kms_service import kms_decrypt
+from backend.kms_service import kms_decrypt
 
 router  = APIRouter(prefix="/accounts", tags=["Accounts"])
 bearer  = HTTPBearer(auto_error=False)

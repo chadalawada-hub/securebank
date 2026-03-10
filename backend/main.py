@@ -15,7 +15,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from config import get_settings
+from backend.config import get_settings
 from database import engine
 from models import Base
 from routers import auth, accounts

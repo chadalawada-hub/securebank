@@ -3,7 +3,7 @@ database.py – Async SQLAlchemy engine and session factory.
 """
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import sessionmaker
-from config import get_settings
+from backend.config import get_settings
 
 settings = get_settings()
 

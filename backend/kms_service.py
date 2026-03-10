@@ -15,7 +15,7 @@ import json
 import os
 import boto3
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from config import get_settings
+from backend.config import get_settings
 
 settings = get_settings()
 
