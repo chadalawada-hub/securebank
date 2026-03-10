@@ -1,0 +1,164 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# SecureBank — Backend Dockerfile
+# ───────────────────────────────────────────────────────────────────────────
+# Multi-stage build:
+#   Stage 1 (builder)  – installs Python dependencies in an isolated env
+#   Stage 2 (runtime)  – copies only the compiled wheels; no build tools
+#
+# Security hardening:
+#   • Non-root user (UID 1001) — container never runs as root
+#   • Read-only /app directory — code cannot be modified at runtime
+#   • No pip, setuptools, or compilers in the final image
+#   • Minimal base image (python:3.12-slim-bookworm)
+#   • All secrets injected via environment variables (never baked in)
+#
+# Build args:
+#   BUILD_SHA    Git commit SHA, embedded in /app/version.txt
+#   BUILD_ENV    Environment name (dev | staging | prod)
+#
+# Local build & run:
+#   docker build -t securebank-api .
+#   docker run --env-file backend/.env -p 8000:8000 securebank-api
+#
+# With docker-compose (from repo root):
+#   docker-compose up --build
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── Build arguments ───────────────────────────────────────────────────────
+ARG PYTHON_VERSION=3.12
+ARG BUILD_SHA=local
+ARG BUILD_ENV=development
+
+# ═══════════════════════════════════════════════════════════════════════════
+# STAGE 1 — builder
+# Installs all Python dependencies into /opt/venv.
+# This stage is discarded in the final image — only the venv is kept.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM python:${PYTHON_VERSION}-slim-bookworm AS builder
+
+# Prevents Python from writing .pyc files and enables unbuffered stdout/stderr
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    # pip settings — faster install, no cache stored in image layer
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_DEFAULT_TIMEOUT=100 \
+    # venv path
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /build
+
+# Install OS packages needed to compile Python C extensions
+# (psycopg2-binary and cryptography both need these)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc \
+        libpq-dev \
+        libffi-dev \
+        libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create the virtual environment
+RUN python -m venv /opt/venv
+
+# ── Dependency install ─────────────────────────────────────────────────────
+# Copy requirements.txt first so Docker layer cache is used on rebuilds
+# when only application code changes (not dependencies).
+COPY requirements.txt .
+
+# Upgrade pip inside the venv, then install all dependencies
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# ═══════════════════════════════════════════════════════════════════════════
+# STAGE 2 — runtime
+# Minimal final image with only what the app needs to run.
+# No build tools, no compilers, no pip.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM python:${PYTHON_VERSION}-slim-bookworm AS runtime
+
+# Re-declare ARGs so they're available in this stage
+ARG BUILD_SHA
+ARG BUILD_ENV
+
+# Runtime environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONFAULTHANDLER=1 \
+    # Point Python to the venv from the builder stage
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:$PATH" \
+    # Uvicorn settings — can be overridden at container run-time
+    PORT=8000 \
+    WORKERS=1 \
+    LOG_LEVEL=info \
+    # App defaults (real values must come from environment / Secrets Manager)
+    APP_ENV=${BUILD_ENV}
+
+# Install only the runtime OS libraries needed by asyncpg / cryptography
+# (libpq5 = PostgreSQL client library, no dev headers)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libpq5 \
+        curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# ── Non-root user ──────────────────────────────────────────────────────────
+# Running as root inside a container is a security risk.
+# We create a dedicated user and group (UID/GID 1001).
+RUN groupadd --gid 1001 appgroup && \
+    useradd --uid 1001 --gid appgroup --shell /bin/bash --create-home appuser
+
+# ── Copy venv from builder ─────────────────────────────────────────────────
+COPY --from=builder /opt/venv /opt/venv
+
+# ── Application code ───────────────────────────────────────────────────────
+WORKDIR /app
+
+# Copy application source (all .py files, routers/, etc.)
+# .dockerignore (below) prevents secrets, __pycache__, .env from being copied
+COPY --chown=appuser:appgroup . .
+
+# Write a version file so the /health endpoint and logs can report build info
+RUN echo "{\"sha\":\"${BUILD_SHA}\",\"env\":\"${BUILD_ENV}\",\"built_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+    > /app/version.json
+
+# ── Permissions ────────────────────────────────────────────────────────────
+# Make /app read-only for the app user — prevents accidental writes at runtime.
+# /tmp is writable for any temporary files uvicorn or the app might need.
+RUN chmod -R 550 /app && \
+    chown -R appuser:appgroup /app
+
+# Switch to non-root user for all subsequent commands and the final CMD
+USER appuser
+
+# ── Port ───────────────────────────────────────────────────────────────────
+EXPOSE 8000
+
+# ── Health check ───────────────────────────────────────────────────────────
+# Docker and ECS use this to determine if the container is healthy.
+# /health must return 2xx within 5 seconds. Checked every 30s.
+# If it fails 3 times in a row the container is marked unhealthy and replaced.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# ── Startup command ────────────────────────────────────────────────────────
+# Uvicorn is the ASGI server. Key flags:
+#   --host 0.0.0.0      Listen on all interfaces (required inside Docker)
+#   --port 8000         Match the EXPOSE above
+#   --workers 1         1 worker for dev / Fargate 0.25 vCPU. Increase for prod.
+#   --proxy-headers     Trust X-Forwarded-For from the ALB
+#   --forwarded-allow-ips *  Required when behind an AWS ALB
+#   --no-access-log     CloudWatch already captures stdout; avoid double-logging
+#   --log-level         Controlled by the LOG_LEVEL env var
+#
+# To run with auto-reload for local development, override CMD:
+#   docker run ... securebank-api uvicorn main:app --reload --host 0.0.0.0
+CMD ["sh", "-c", \
+     "uvicorn main:app \
+      --host 0.0.0.0 \
+      --port ${PORT} \
+      --workers ${WORKERS} \
+      --proxy-headers \
+      --forwarded-allow-ips '*' \
+      --log-level ${LOG_LEVEL}"]

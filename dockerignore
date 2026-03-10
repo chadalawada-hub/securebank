@@ -1,0 +1,90 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# SecureBank — .dockerignore
+# ───────────────────────────────────────────────────────────────────────────
+# Files and folders listed here are EXCLUDED from the Docker build context.
+# This is critical for security (no secrets baked in) and build speed
+# (smaller context = faster COPY to build daemon).
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── Secrets — NEVER bake these into an image ──────────────────────────────
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+credentials
+
+# ── Python artifacts ───────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+
+# ── Virtual environments ───────────────────────────────────────────────────
+.venv/
+venv/
+env/
+.virtualenv/
+
+# ── Test and coverage ─────────────────────────────────────────────────────
+tests/
+test/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+*.test.py
+conftest.py
+
+# ── Local SQLite databases (used in unit tests) ───────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── IDEs and editors ──────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Git ───────────────────────────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+
+# ── CI/CD ─────────────────────────────────────────────────────────────────
+.github/
+.gitlab-ci.yml
+Makefile
+*.sh
+
+# ── Docker files (no need to recurse into the image itself) ───────────────
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# ── Docs and local notes ──────────────────────────────────────────────────
+*.md
+README*
+docs/
+*.txt
+!requirements.txt
+
+# ── Alembic migration history (migrations run separately via migrate.py) ──
+alembic/versions/
+
+# ── Log files ─────────────────────────────────────────────────────────────
+*.log
+logs/
