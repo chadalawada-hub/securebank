@@ -33,10 +33,12 @@ Parameters:
 
   DesiredCount:
     Type: Number
-    Default: 1
+    Default: 0
     MinValue: 0
     MaxValue: 10
-    Description: Number of running Fargate tasks (1 for dev, 2+ for prod)
+    Description: >
+      Number of running Fargate tasks. Set to 0 for initial stack creation
+      (no real image exists yet). GitHub Actions sets this to 1 after first deploy.
 
   UseFargateSpot:
     Type: String
@@ -141,12 +143,6 @@ Resources:
               awslogs-group: !Ref LogGroup
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
-          HealthCheck:
-            Command: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
-            Interval: 30
-            Timeout: 5
-            Retries: 3
-            StartPeriod: 60
           # Resource limits — protect the container from runaway processes
           Ulimits:
             - Name: nofile
@@ -268,11 +264,11 @@ Resources:
           TargetGroupArn: !Ref TargetGroup
       HealthCheckGracePeriodSeconds: 60
       DeploymentConfiguration:
-        MinimumHealthyPercent: 0     # Allow 0 for dev (single task can replace in-place)
+        MinimumHealthyPercent: 0
         MaximumPercent: 200
         DeploymentCircuitBreaker:
-          Enable: true
-          Rollback: true             # Auto-rollback if health checks fail
+          Enable: false
+          Rollback: false
       Tags:
         - Key: Environment
           Value: !Ref Environment

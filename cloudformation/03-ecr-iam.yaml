@@ -22,6 +22,16 @@ Parameters:
       Number of container images to keep in ECR. Older images are auto-deleted
       to stay within the free 500 MB tier.
 
+  GitHubOrg:
+    Type: String
+    Description: Your GitHub organisation or username (e.g. myorg)
+    Default: chadalawada-hub
+
+  GitHubRepo:
+    Type: String
+    Description: Your GitHub repository name (e.g. securebank)
+    Default: securebank
+
 Resources:
 
   # ─── ECR Repository ──────────────────────────────────────────
@@ -238,17 +248,6 @@ Resources:
       ThumbprintList:
         - 6938fd4d98bab03faadb97b34396831e3780aea1
         - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
-
-# ─── Parameters for GitHub repo (injected at deploy time) ──────
-  GitHubOrg:
-    Type: String
-    Description: Your GitHub organisation or username (e.g. myorg)
-    Default: YOUR_GITHUB_ORG
-
-  GitHubRepo:
-    Type: String
-    Description: Your GitHub repository name (e.g. securebank)
-    Default: YOUR_GITHUB_REPO
 
 Outputs:
   EcrRepositoryUri:
